@@ -51,7 +51,21 @@ module.exports = class IotaConnector extends BaseConnector {
     if(!Object.keys(ssid).includes('mamstate')) {
       ssid.mamstate = this.Mam.init(this.iota, ssid.privkey, 2);
     }
-    return this.verify(ssid, null)
+    let latest = null
+    let current = ssid.pubkey
+    let start = 1
+    while(current != null) {
+      let res = await this.get(current, ssid)
+      if(res == null) {
+        return latest
+      }
+      ssid.mamstate.channel.next_root = res.next
+      ssid.mamstate.channel.start = start
+      start++
+      latest = current
+      current = res.next
+    }
+    throw Error('Unexpected exception at verify()')
   }
 
   async newSsid() {
@@ -75,7 +89,7 @@ module.exports = class IotaConnector extends BaseConnector {
     var resp = await this.Mam.fetchSingle(reference, 'public', null)
     if(resp) {
       let data = JSON.parse(this.iota.utils.fromTrytes(resp.payload))
-      return {'data':data.data, 'previous':data.previous, 'next':resp.next_root}
+      return {'data':data.data, 'previous':data.previous, 'next':resp.nextRoot}
     }
     return null
   }
@@ -87,25 +101,14 @@ module.exports = class IotaConnector extends BaseConnector {
    */
   async verify(ssid, data) {
     let current = ssid.pubkey
-    let start = 0
+    let start = 1
     while(current != null) {
-      console.log("Current:"+current)
       let res = await this.get(current, ssid)
-      console.log("Res:"+res)
       if(res == null) {
-        console.log('ehrm Is null')
         return null
       }
-      if((data != null) && (JSON.stringify(data) == JSON.stringify(res.data))) {
-        console.log("Ret:"+current)
+      if(JSON.stringify(data) == JSON.stringify(res.data)) {
         return current
-      }
-      if(data == null) {
-        ssid.mamstate.channel.next_root = res.next
-        ssid.mamstate.channel.start = start
-        if(res.next == null)
-          return current
-        start++
       }
       current = res.next
     }

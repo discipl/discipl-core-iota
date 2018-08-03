@@ -69,7 +69,6 @@ let suite = vows.describe('discipl-core-iota').addBatch({
   'get()' : {
     topic : function () {
       vows = this
-      console.log(tmpReference)
       connector.get(tmpReference).then(function (res) {
         vows.callback(null, res)
       }).catch(function (err) {
@@ -78,7 +77,6 @@ let suite = vows.describe('discipl-core-iota').addBatch({
     },
     ' returns a result object with the data and a previous reference that equals null' : function (err, res) {
         assert.equal(err, null)
-        console.log("Res:"+res)
         assert.equal(JSON.stringify(res.data), JSON.stringify({'need':'beer'}))
         assert.equal(res.previous, null)
     }
@@ -88,10 +86,8 @@ let suite = vows.describe('discipl-core-iota').addBatch({
       vows = this
       connector.claim(tmpSsid, {'need':'u'}).then(function (res) {
         tmpReference2 = res
-        console.log(res)
         vows.callback(null, res)
       }).catch(function (err) {
-        console.log('Error'+err)
         vows.callback(err, null)
       })
     },
