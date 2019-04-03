@@ -1,8 +1,8 @@
-const CryptoJS = require('crypto-js')
-const BaseConnector = require('discipl-core-baseconnector')
-const randomNumber = require("random-number-csprng");
+import CryptoJS from 'crypto-js'
+import { BaseConnector } from '@discipl/core-baseconnector'
+import randomNumber from 'random-number-csprng'
 
-module.exports = class IotaConnector extends BaseConnector {
+class IotaConnectorOld extends BaseConnector {
 
   constructor() {
     super()
@@ -30,33 +30,33 @@ module.exports = class IotaConnector extends BaseConnector {
     var charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZ9"
     var result = []
 
-    for(var i = 0; i < length; i++) {
+    for (var i = 0; i < length; i++) {
       var num = await randomNumber(0, (charset.length * Math.floor(255 / charset.length)) - 1)
       result.push(charset[num % charset.length])
     }
 
-    return new Promise(function(resolve, reject) {
+    return new Promise(function (resolve, reject) {
       resolve(result.join(""))
     })
   }
 
   async getSsidOfClaim(reference) {
     data = await this.get(reference, null)
-    if(data != null)
-      return { 'pubkey':data.pubkey }
+    if (data != null)
+      return { 'pubkey': data.pubkey }
     return null
   }
 
   async getLatestClaim(ssid) {
-    if(!Object.keys(ssid).includes('mamstate')) {
+    if (!Object.keys(ssid).includes('mamstate')) {
       ssid.mamstate = this.Mam.init(this.iota, ssid.privkey, 2);
     }
     let latest = null
     let current = ssid.pubkey
     let start = 1
-    while(current != null) {
+    while (current != null) {
       let res = await this.get(current, ssid)
-      if(res == null) {
+      if (res == null) {
         return latest
       }
       ssid.mamstate.channel.next_root = res.next
@@ -72,24 +72,24 @@ module.exports = class IotaConnector extends BaseConnector {
     const seed = await this.seedGen()
     const state = this.Mam.init(this.iota, seed, 2)
     const pubkey = this.Mam.getRoot(state)
-    return {'pubkey':pubkey, 'privkey':seed, 'mamstate':state}
+    return { 'pubkey': pubkey, 'privkey': seed, 'mamstate': state }
   }
 
   async claim(ssid, data) {
     let latest = await this.getLatestClaim(ssid)
-    var trytes = this.iota.utils.toTrytes(JSON.stringify({'data': data, 'pubkey':ssid.pubkey, 'previous':latest}))
+    var trytes = this.iota.utils.toTrytes(JSON.stringify({ 'data': data, 'pubkey': ssid.pubkey, 'previous': latest }))
     var message = this.Mam.create(ssid.mamstate, trytes)
     ssid.mamstate = message.state;
-    if(!this.offloadMode)
-	   await this.Mam.attach(message.payload, message.address)
+    if (!this.offloadMode)
+      await this.Mam.attach(message.payload, message.address)
     return message.address
   }
 
   async get(reference, ssid) {
     var resp = await this.Mam.fetchSingle(reference, 'public', null)
-    if(resp) {
+    if (resp) {
       let data = JSON.parse(this.iota.utils.fromTrytes(resp.payload))
-      return {'data':data.data, 'previous':data.previous, 'next':resp.nextRoot}
+      return { 'data': data.data, 'previous': data.previous, 'next': resp.nextRoot }
     }
     return null
   }
@@ -102,12 +102,12 @@ module.exports = class IotaConnector extends BaseConnector {
   async verify(ssid, data) {
     let current = ssid.pubkey
     let start = 1
-    while(current != null) {
+    while (current != null) {
       let res = await this.get(current, ssid)
-      if(res == null) {
+      if (res == null) {
         return null
       }
-      if(JSON.stringify(data) == JSON.stringify(res.data)) {
+      if (JSON.stringify(data) == JSON.stringify(res.data)) {
         return current
       }
       current = res.next
@@ -118,5 +118,6 @@ module.exports = class IotaConnector extends BaseConnector {
   async subscribe(ssid) {
     throw Error('Not yet implemented')
   }
-
 }
+
+export default IotaConnectorOld
