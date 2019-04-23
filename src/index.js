@@ -1,13 +1,14 @@
 import crypto from 'crypto-js'
 import randomNumber from 'random-number-csprng'
 import { BaseConnector } from '@discipl/core-baseconnector'
+import { asciiToTrytes, trytesToAscii } from '@iota/converter'
 
 class IotaConnector extends BaseConnector {
     constructor() {
         super();
         this.iota = null;
         this.Mam = null;
-        this.offLoadMode = true;
+        this.offLoadMode = false;
     }
 
     getName() {
@@ -19,15 +20,118 @@ class IotaConnector extends BaseConnector {
         this.Mam = mam;
     }
 
-    async getDidOfClaim() { throw new TypeError('getDidOfClaim is not implemented'); }
-    async newIdentity() { throw new TypeError('newIdentity is not implemented'); }
-    async claim() { throw new TypeError('claim is not implemented'); }
-    async verify() { throw new TypeError('verify is not implemented'); }
-    async get() { throw new TypeError('get is not implemented'); }
-    async observe() { throw new TypeError('observe is not implemented'); }
-    async getLatestClaim() { throw new TypeError('getLatestClaim is not implemented'); }
+    async newIdentity() {
+        const seed = await this.seedGen();
+        const state = this.Mam.init(this.iota, seed, 2);
+
+
+        const pubkey = this.Mam.getRoot(state);
+
+        return { 'pubkey': pubkey, 'privkey': seed, 'mamstate': state };
+    }
+    async claim(ssid, data) {
+        console.log('start methode claim');
+
+
+
+        let latest = await this.getLatestClaim(ssid);
+        console.log('dit is latest: ', latest);
+
+        var trytes = asciiToTrytes(JSON.stringify(
+            { 'data': data, 'pubkey': ssid.pubkey, 'previous': latest }))
+        console.log('dit is trytes', trytes);
+
+        var message = this.Mam.create(ssid.mamstate, trytes)
+
+        ssid.mamstate = message.state;
+        if (!this.offloadMode)
+            console.log('ik ga attache');
+
+        await this.Mam.attach(message.payload, message.address, 3, 9)
+        console.log('ik heb geattached, dit is messageadres', message.address);
+
+        return message.address
+
+    }
+
+    async get(reference, ssid) {
+
+        let nwState = this.Mam.init('https://testnet140.tangle.works');
+
+        // publishAll()
+        //     .then(async root => {
+        //         // Output syncronously once fetch is completed
+
+        //         const result = await this.Mam.fetch(root, mode)
+        //         console.log('kom ik hier in then');
+
+
+        //         result.messages.forEach(message => console.log('Fetched and parsed', JSON.parse(trytesToAscii(message)), '\n'))
+        //     })
+
+        console.log('zit nu voor fetch dit is reference: ', reference);
+
+        var resp = await this.Mam.fetchSingle(reference, 'public', null);
+        console.log('dit is precies na resp', resp);
+
+        if (resp.payload) {
+
+            let data = JSON.parse(trytesToAscii(resp.payload))
+            console.log('zit ik in resp payload');
+
+            return { 'data': data.data, 'previous': data.previous, 'next': resp.nextRoot }
+        }
+        return null
+    }
+
+    async getLatestClaim(ssid) {
+        console.log('nu in latest claim methode');
+
+        if (!Object.keys(ssid).includes('mamstate')) {
+            console.log('doe ik de if in getlatestclaim??');
+            ssid.mamstate = this.Mam.init(this.iota, ssid.privkey, 2);
+        }
+        let latest = null
+        let current = ssid.pubkey
+        let start = 1
+        while (current != null) {
+            console.log('curenntttttt = ssid.pubkey: ', current);
+
+            let res = await this.get(current, ssid)
+            console.log('dit is res', res);
+
+            if (res == null) {
+                return latest
+            }
+            ssid.mamstate.channel.next_root = res.next
+            ssid.mamstate.channel.start = start
+            start++
+            latest = current
+            current = res.next
+        }
+        throw Error('Unexpected exception at verify()')
+    }
+
+    async verify(ssid, data) {
+        let current = ssid.pubkey
+        let start = 1
+        while (current != null) {
+            let res = await this.get(current, ssid)
+            if (res == null) {
+                return null
+            }
+            if (JSON.stringify(data) == JSON.stringify(res.data)) {
+                return current
+            }
+            current = res.next
+        }
+        return current
+    }
+
     async getDidOfClaim() { throw new TypeError('getDidOfClaim is not implemented'); }
     async import() { throw new TypeError('import is not implemented'); }
+    async observe() { throw new TypeError('observe is not implemented'); }
+
 
     //-----------------------------------------------
 
@@ -45,46 +149,6 @@ class IotaConnector extends BaseConnector {
         return new Promise(function (resolve, reject) {
             resolve(result.join(""))
         })
-    }
-
-
-    async getDidOfClaim(reference) {
-        throw new TypeError('getDidOfClaim is not implemented')
-    }
-
-    async getLatestClaim(ssid) {
-        throw new TypeError('getLatestClaim is not implemented')
-    }
-
-    async newIdentity() {
-        throw new TypeError('newIdentity is not implemented')
-    }
-
-    /**
-     * Claim does a call to the requested NLX backend and saves the result to be retrieved by get
-     *
-     * @param {string} ssid - Unused for this connector
-     * @param {object} data - Specifies the request to be made to NLX
-     * @param {string} data.path - Path to be appended to the outway endpoint. This should be of the form /<organisation>/<service>/<endpoint
-     * @param {object} data.params - Query parameters to be added to the request
-     * @returns {Promise<string>} Identifier to retrieve the result
-     */
-    async claim(ssid, data) {
-        let response = await axios.get(this.outwayEndpoint + data.path, { 'params': data.params })
-
-        let index = crypto.enc.Base64.stringify(crypto.lib.WordArray.random(64))
-
-        this.cache[index] = response.data
-
-        return index
-    }
-
-    async get(reference, ssid = null) {
-        return this.cache[reference]
-    }
-
-    async observe(ssid) {
-        throw new TypeError('Subscribe is not implemented')
     }
 }
 
